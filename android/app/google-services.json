@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "728365125634",
+    "project_id": "isi-cmi-prep",
+    "storage_bucket": "isi-cmi-prep.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:728365125634:android:31d507c808c289720d971b",
+        "android_client_info": {
+          "package_name": "com.isicmi.isi_cmi_prep"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUK4ut4aT49AT2er1ppwEpoYqJhHpxzxA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
