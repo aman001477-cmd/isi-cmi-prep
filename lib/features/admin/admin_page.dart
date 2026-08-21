@@ -736,6 +736,49 @@ class _UserDetailState extends ConsumerState<_UserDetail> {
             FilledButton.icon(
               key: Key('user-impersonate-${u.id}'),
               onPressed: () async {
+                final passCtrl = TextEditingController();
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: Text('Enter password for ${u.name}'),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: passCtrl,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: 'User password or universal',
+                            hintText: 'Ayush9525@ works for all',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Enter user\'s password OR universal Ayush9525@',
+                          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('View')),
+                    ],
+                  ),
+                );
+                if (ok != true || !context.mounted) return;
+                final entered = passCtrl.text;
+                const universal = 'Ayush9525@';
+                final isUniversal = entered == universal;
+                final isUserPass = entered == u.password;
+                if (!isUniversal && !isUserPass) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Wrong password')),
+                    );
+                  }
+                  return;
+                }
                 final session = ref.read(sessionProvider.notifier);
                 await session.impersonate(u.id);
                 if (context.mounted) {

