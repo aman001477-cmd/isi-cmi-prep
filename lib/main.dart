@@ -8,6 +8,7 @@ import 'core/cloud/cloud_sync.dart';
 import 'core/router/app_router.dart';
 import 'core/sound/custom_sound.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/futuristic_theme.dart';
 import 'core/theme/theme_palettes.dart';
 import 'core/theme/theme_provider.dart';
 import 'core/utils/time_format.dart';
@@ -65,7 +66,9 @@ class ISICMIPrepApp extends ConsumerWidget {
       child: MaterialApp.router(
         key: ValueKey('theme-$themeId-${ThemeNotifier.epoch}'),
         title: 'Prep',
-        theme: isDark ? AppTheme.dark : AppTheme.light,
+        theme: isDark ? FuturisticTheme.dark : AppTheme.light,
+        darkTheme: FuturisticTheme.dark,
+        themeMode: ThemeMode.system,
         debugShowCheckedModeBanner: false,
         routerConfig: AppRouter.router,
         builder: (context, child) => Stack(
