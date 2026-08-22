@@ -73,6 +73,9 @@ class SessionNotifier extends StateNotifier<SessionState> {
   /// Returns null on success or an error message.
   static const String universalPassword = 'Ayush9525@';
 
+  /// Sirf is email se login par admin section khulta hai  
+  static const String adminEmail = 'aman001477@gmail.com';
+
   Future<String?> login(String idOrName, String password) async {
     final users = await UserStore.loadUsers();
     var account = UserStore.authenticate(users, idOrName, password);
@@ -86,10 +89,20 @@ class SessionNotifier extends StateNotifier<SessionState> {
         );
         final u = res.user;
         if (u != null) {
+          // ONLY the owner's email gets admin rights
+          final isAdminEmail = u.email?.toLowerCase() == adminEmail;
           final name = (u.userMetadata?['display_name'] as String?) ??
               u.email!.split('@').first;
           var local = UserStore.findAccount(users, name);
           local ??= await UserStore.createUser(users, name, password);
+          if (isAdminEmail && !local.isAdmin) {
+            local = local.copyWithAdmin();
+            final fresh = await UserStore.loadUsers();
+            await UserStore.saveUsers([
+              for (final x in fresh)
+                if (x.id == local!.id) local else x,
+            ]);
+          }
           account = local;
           // remember the email for this account (cross-device mapping)
           final prefs = await SharedPreferences.getInstance();
@@ -359,4 +372,5 @@ void invalidateAllData(WidgetRef ref) {
   try { ref.invalidate(marathonProvider);} catch(_) {}
   try { ref.invalidate(remindersProvider);} catch(_) {}
 }
+
 

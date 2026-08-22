@@ -47,6 +47,19 @@ class UserAccount {
 
   final DateTime? createdAt;
 
+  /// Admin flag flip (used when the owner email signs in).
+  UserAccount copyWithAdmin() => UserAccount(
+        id: id,
+        name: name,
+        password: password,
+        isAdmin: true,
+        canEdit: true,
+        canDelete: true,
+        canRemove: true,
+        canReenter: true,
+        createdAt: createdAt,
+      );
+
   UserAccount copyWith({
     String? name,
     String? password,
