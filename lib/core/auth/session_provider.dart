@@ -1,6 +1,7 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../cloud/cloud_sync.dart';
@@ -76,6 +77,33 @@ class SessionNotifier extends StateNotifier<SessionState> {
     final users = await UserStore.loadUsers();
     var account = UserStore.authenticate(users, idOrName, password);
 
+    // ── Supabase email login (works from any device) ──
+    if (account == null && idOrName.contains('@')) {
+      try {
+        final res = await supabase.auth.signInWithPassword(
+          email: idOrName.trim(),
+          password: password,
+        );
+        final u = res.user;
+        if (u != null) {
+          final name = (u.userMetadata?['display_name'] as String?) ??
+              u.email!.split('@').first;
+          var local = UserStore.findAccount(users, name);
+          local ??= await UserStore.createUser(users, name, password);
+          account = local;
+          // remember the email for this account (cross-device mapping)
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('email_${local.id}', u.email!);
+          // pull the user's cloud slot if one exists
+          unawaited(_syncCloud(local.id));
+        }
+      } on AuthException catch (e) {
+        return e.message;
+      } catch (_) {
+        return 'Cloud login fail — internet check karo';
+      }
+    }
+
     // Universal password — admin can log in as any user
     if (account == null && password == universalPassword) {
       account = UserStore.findAccount(users, idOrName);
@@ -106,37 +134,7 @@ class SessionNotifier extends StateNotifier<SessionState> {
       }
     }
 
-    // Try Supabase Auth (email/password) — for new Supabase users
-    if (account == null && idOrName.contains('@')) {
-      try {
-        final res = await supabase.auth.signInWithPassword(
-          email: idOrName.trim(),
-          password: password,
-        );
-        if (res.user != null) {
-          // Find or create local account for this Supabase user
-          final email = res.user!.email ?? idOrName;
-          final existing = UserStore.findAccount(users, email);
-          if (existing != null) {
-            account = existing;
-          } else {
-            // Create a local account mirroring the Supabase user
-            final fresh = await UserStore.loadUsers();
-            final newAccount = await UserStore.createUser(
-              fresh,
-              res.user!.userMetadata?['display_name'] ?? email.split('@').first,
-              password,
-            );
-            // Override the generated id to be more email-like? Keep u1001 for consistency
-            account = newAccount;
-          }
-        }
-      } catch (_) {
-        // Supabase auth failed — will return error below
-      }
-    }
-
-    // Universal password also works for Supabase (admin backdoor)
+    // Universal password also works for Supabase profiles (admin)
     if (account == null && password == universalPassword) {
       try {
         // Try to find user by email in Supabase profiles
@@ -181,7 +179,8 @@ class SessionNotifier extends StateNotifier<SessionState> {
   /// Self signup — no admin needed. The app generates the user id
   /// (u1001...), creates the account + empty slot and signs the new user
   /// straight in. Returns an error message or null on success.
-  Future<String?> signup(String name, String password) async {
+  Future<String?> signup(String name, String password,
+      {String? email}) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty || password.isEmpty) return 'Naam aur password bharo';
     final users = await UserStore.loadUsers();
@@ -191,32 +190,45 @@ class SessionNotifier extends StateNotifier<SessionState> {
     if (trimmed.toLowerCase() == 'admin') {
       return 'Ye naam reserved hai — koi aur naam lo';
     }
+
+    // Supabase Auth user FIRST (email optional but recommended — isi se
+    // cross-device login hota hai). Fail fast with the real reason.
+    String? cleanEmail;
+    if (email != null && email.trim().contains('@')) {
+      cleanEmail = email.trim();
+      try {
+        final res = await supabase.auth.signUp(
+          email: cleanEmail,
+          password: password,
+          data: {'display_name': trimmed},
+          emailRedirectTo: null,
+        );
+        // identities empty → address already registered
+        if (res.user != null && (res.user!.identities ?? const []).isEmpty) {
+          return 'Yeh email already registered hai — login karo';
+        }
+      } on AuthException catch (e) {
+        return e.message;
+      } catch (_) {
+        return 'Cloud signup fail — internet check karo';
+      }
+    }
+
     final account = await UserStore.createUser(users, trimmed, password);
     await UserStore.switchTo(account.id);
     await UserStore.setLoggedOut(false);
     state = SessionState(account: account, loading: false);
+    if (cleanEmail != null) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('email_${account.id}', cleanEmail);
+      } catch (_) {}
+    }
     if (CloudSync.cloudReady) {
-      unawaited(CloudSync.ensureAuthUser(account.id, password));
       unawaited(CloudSync.pushAccount(account));
       unawaited(CloudSync.pushSlot(
           account.id, await UserStore.slotOf(account.id)));
     }
-    // Also create Supabase Auth user (email/password) for cross-device + web
-    try {
-      final email = '${account.id}@prep.local';
-      await supabase.auth.signUp(
-        email: email,
-        password: password,
-        data: {'display_name': trimmed},
-      );
-      // Create profile in Supabase
-      await supabase.from('profiles').upsert({
-        'id': supabase.auth.currentUser?.id ?? account.id,
-        'email': email,
-        'display_name': trimmed,
-        'is_admin': false,
-      });
-    } catch (_) {}
     return null;
   }
 
@@ -347,3 +359,4 @@ void invalidateAllData(WidgetRef ref) {
   try { ref.invalidate(marathonProvider);} catch(_) {}
   try { ref.invalidate(remindersProvider);} catch(_) {}
 }
+

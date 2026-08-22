@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/intro/intro_gate.dart';
+import 'core/config/supabase_config.dart';
 import 'core/cloud/cloud_sync.dart';
 import 'core/router/app_router.dart';
 import 'core/sound/custom_sound.dart';
@@ -35,7 +36,8 @@ void main() {
   setDevice24hFormat(media.alwaysUse24HourFormat);
   initReminderNotifications();
   unawaited(CustomSoundStore.instance.load());
-  unawaited(CloudSync.init());
+  // Supabase (email login + cloud data) — safe no-op if config missing
+  unawaited(SupabaseConfig.initialize());
 
   final originalError = FlutterError.onError;
   FlutterError.onError = (details) {

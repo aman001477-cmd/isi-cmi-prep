@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/auth/session_provider.dart';
@@ -18,6 +18,7 @@ class LoginPage extends ConsumerStatefulWidget {
 
 class _LoginPageState extends ConsumerState<LoginPage> {
   final _idController = TextEditingController();
+  final _emailController = TextEditingController();
   final _nameController = TextEditingController();
   final _passController = TextEditingController();
   bool _busy = false;
@@ -38,7 +39,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final hasUsers = users.where((u) => !u.isAdmin).isNotEmpty;
     setState(() {
       _hint = hasUsers
-          ? 'Admin ya user id + password se login karo'
+          ? 'User id / email + password — kisi bhi device se'
           : 'Default admin login: admin / admin123';
     });
   }
@@ -97,6 +98,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   void dispose() {
     _idController.dispose();
+    _emailController.dispose();
     _nameController.dispose();
     _passController.dispose();
     super.dispose();
@@ -166,7 +168,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               enabled: !_busy,
               decoration: const InputDecoration(
                 labelText: 'User ID',
-                hintText: 'admin / u1001 / name',
+                hintText: 'admin / u1001 / you@mail.com',
                 prefixIcon: Icon(Icons.person_outline),
                 border: OutlineInputBorder(),
               ),
@@ -181,6 +183,20 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 labelText: 'Your name',
                 hintText: 'Jaise: Priya Sharma',
                 prefixIcon: Icon(Icons.badge_outlined),
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextField(
+              key: const Key('signup-email'),
+              controller: _emailController,
+              enabled: !_busy,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email (cross-device login ke liye)',
+                hintText: 'you@example.com',
+                prefixIcon: Icon(Icons.alternate_email_rounded),
                 border: OutlineInputBorder(),
               ),
               onSubmitted: (_) => _submit(),
@@ -280,3 +296,5 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     );
   }
 }
+
+
