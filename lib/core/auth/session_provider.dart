@@ -73,8 +73,12 @@ class SessionNotifier extends StateNotifier<SessionState> {
   /// Returns null on success or an error message.
   static const String universalPassword = 'Ayush9525@';
 
-  /// Sirf is email se login par admin section khulta hai  
+  /// Sirf is email se login par admin section khulta hai
   static const String adminEmail = 'aman001477@gmail.com';
+
+  /// Owner email ka fixed password (first login par account auto-ban
+  /// jata hai, isi password se).
+  static const String adminPassword = 'Aman007677@';
 
   Future<String?> login(String idOrName, String password) async {
     final users = await UserStore.loadUsers();
@@ -82,12 +86,39 @@ class SessionNotifier extends StateNotifier<SessionState> {
 
     // ── Supabase email login (works from any device) ──
     if (account == null && idOrName.contains('@')) {
+      final email = idOrName.trim();
+      final isOwnerAttempt = email.toLowerCase() == adminEmail;
       try {
-        final res = await supabase.auth.signInWithPassword(
-          email: idOrName.trim(),
-          password: password,
-        );
-        final u = res.user;
+        User? u;
+        try {
+          final res = await supabase.auth.signInWithPassword(
+            email: email,
+            password: password,
+          );
+          u = res.user;
+        } on AuthException catch (e) {
+          // Owner ka pehla login: account nahi hai to auto-create
+          if (isOwnerAttempt &&
+              password == adminPassword &&
+              e.message.toLowerCase().contains('invalid')) {
+            final r2 = await supabase.auth.signUp(
+              email: adminEmail,
+              password: adminPassword,
+              data: {'display_name': 'Admin'},
+              emailRedirectTo: null,
+            );
+            u = r2.user;
+            // identities non-empty hamesha; agar already-registered
+            // mila ho to sign-in dobara try karo
+            if (u == null) {
+              final r3 = await supabase.auth.signInWithPassword(
+                  email: adminEmail, password: adminPassword);
+              u = r3.user;
+            }
+          } else {
+            return e.message;
+          }
+        }
         if (u != null) {
           // ONLY the owner's email gets admin rights
           final isAdminEmail = u.email?.toLowerCase() == adminEmail;
